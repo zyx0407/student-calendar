@@ -14,7 +14,7 @@
      ══════════════════════════════════════════════════════════ */
   var QR = (function () {
     /* 每版的（块数, 数据码字/块, 纠错码字/块）——**M 档、版本 1~10**
-       ⚠️ 这张表必须逐版核，凭记忆写必错（2026-09-27 真踩：v3 写成 2 块×22，
+       ⚠️ 这张表必须逐版核，凭记忆写必错（v3 是 1 块×44，
           正确是 1 块×44，结果码字总数 96 ≠ 70，扫不出来）。
        数据来源：Python qrcode 库 `base.py` 的 RS_BLOCK_TABLE（M 档那一行），
        它给的是 (块数, 总码字, 数据码字)，这里换算成 (块数, 数据, 纠错=总−数据)。 */
@@ -97,7 +97,7 @@
 
     /* ── 数据编码：字节模式 → 码字 → 分块 RS → 交织 ──
        位流顺序**必须**是：模式指示符(0100) → 字符计数 → 数据字节。
-       ⚠️ 2026-09-27 真踩两次：① 用 unshift(0,1,0,0) 会插成 0010（数字模式）；
+       ⚠️ 两个位置最容易写错：① 用 unshift(0,1,0,0) 会插成 0010（数字模式）；
        ② 把计数位 push 在数据之后 → 整条码字流全错、扫不出来。 */
     function toCodewords(bytes, v) {
       var dataCw = totalDataCodewords(v);
@@ -240,7 +240,7 @@
       return p;
     }
     /* 格式信息（纠错等级 M = 00）+ 固定深色模块。
-       ⚠️ 两份拷贝的位序方向**相反**，凭印象写必错（2026-09-27 真踩，只差 4 个模块却难查）。
+       ⚠️ 两份拷贝的位序方向**相反**，凭印象写必错 —— 只差几个模块，最难查的就是它。
        布局以 Python qrcode 库 `main.py :: setup_type_info` 为准：
          · 竖排 (r=n-15+i, 8) 用 bit i   → bit14 落在 (0,8)   ← 即左下角拷贝
          · 横排 (8, n-1-i)    用 bit i   → bit14 落在 (8,n-15)
@@ -316,7 +316,7 @@
 
     return {
       encode: encode,
-      codewords: function (text) {                      // 给码字级核对用（test\qr-dump.mjs）
+      codewords: function (text) {                      // 给码字级核对用
         var bytes = utf8Bytes(String(text));
         var v = pickVersion(bytes.length);
         return v ? toCodewords(bytes, v) : null;
@@ -421,7 +421,7 @@
     return Math.round((b - a) / 86400000);
   }
   /* 日期文案：一律带年份。多条同月同日的批次（如公共营养师 3/6/9/12 四批）
-     不带年就全糊成「11月1日 · 11月1日 · 11月1日」（2026-09-27 真踩）。 */
+     不带年就全糊成「11月1日 · 11月1日 · 11月1日」。 */
   function cnDate(s) {
     var t = String(s || '').trim();
     if (!t) return '';
@@ -491,8 +491,7 @@
   function regs(c) { return (c.报名时间 || []).filter(Boolean); }
   function exams(c) { return (c.考试时间 || []).filter(Boolean); }
 
-  /* （A 版改版 2026-09-27：原来的「月份点 pointsOf / 卡片左侧月份 leadMonths」随点阵轴一起下线，
-     现在由 fitOf() 一次算清「哪些月有事 / 第一批报名考试」，轴与卡片共用同一份结果） */
+  /* 「哪些月有事 / 第一批报名考试」由 fitOf() 一次算清，轴与卡片共用同一份结果。 */
 
   /* 倒计时 / 状态文案 */
   function countdown(c) {
@@ -531,7 +530,7 @@
     if (loose) f = f.concat([c.说明, c.适合, c.费用]);
     return f.join(' ').toLowerCase();
   }
-  /* 「专业扩展」（TEM-4/8）**不进主列表**（他 2026-09-27 定的）：默认一条不出，只有点了那枚胶囊才显示 */
+  /* 「专业扩展」（TEM-4/8）**不进主列表**：默认一条不出，只有点了那枚胶囊才显示 */
   function isExt(c) { return !!c.扩展; }
   /* 除搜索以外的条件先过一遍，再决定搜索用严格还是宽松 */
   function preFiltered() {
@@ -559,8 +558,8 @@
   }
 
   /* ── 吸顶：用滚动事件钉住时间轴条 ─────
-     为什么不用 position:sticky：在这张页面里它只吸一截就跟着走（2026-09-27 实测），
-     逐层排查没找到破坏者 → 自己钉，行为可测（test\吸顶实测.mjs 就是量它）。 */
+     为什么不用 position:sticky：在这张页面里它只吸一截就跟着走（实测 top=-2411），
+     逐层排查没找到破坏者 → 自己钉，行为可测。 */
   var pin = { on: false, box: null, pad: 0 };
   function pinCache(bar) {
     var zone = document.getElementById('stickyzone') || bar.parentNode;
@@ -573,7 +572,7 @@
     var zTop = zone.getBoundingClientRect().top + window.pageYOffset;
     pin.box = {
       /* ⚠️ 钉住时 left/width 要用**内容容器的边框盒**：
-         left = .wrap 在视口里的左边（不是内边距值！.wrap 是 margin:auto 居中的，两者差 117px，2026-09-27 真踩）
+         left = .wrap 在视口里的左边（不是内边距值 —— .wrap 是 margin:auto 居中的，两者能差上百像素）
          width = .wrap 的 clientWidth（含内边距，因为 .tlbar 自己是 border-box） */
       left: wr ? Math.round(wr.left) : pad,
       w: wrap ? wrap.clientWidth : 0,
@@ -615,7 +614,7 @@
     pinRAF = requestAnimationFrame(function () { pinRAF = 0; pinTick(); });
   }
   /* ── 分享：分享的就是**整张卡片**（报名/考试时间 · 费用 · 官网 · 小鱼说明 + 二维码） ──
-     改版前弹层里只有「一坨码 + 链接」；他 2026-09-27 定：分享的应该是整张卡，官网/费用/时间都得在图里。 */
+     分享的是整张卡：官网 / 费用 / 时间都得在图里，不只一枚码加一条链接。 */
   /* 分享链接＝当前页面地址 + ?card=<这张证>（跟着页面走，挂到 work1 也不用改） */
   function shareURL(id) {
     var base = location.origin + location.pathname;
@@ -675,7 +674,7 @@
 
   /* ── 保存图片：手绘 canvas（零依赖、2 倍图） ──
      永远画**浅色版**：存下来的图是发给同学 / 贴群里的，深色版在别人那儿不好读。
-     版式跟页面上的分享卡对齐；二维码按模块画，落盘后仍能被扫码器解出原链接（test\share-card-check.mjs 验它）。 */
+     版式跟页面上的分享卡对齐；二维码按模块画，落盘后仍能被扫码器解出原链接。 */
   function shareCanvas(c, g, url) {
     var S = 2, W = 376, padX = 24, PT = 22, kCol = 62;
     var fam = '"Noto Sans SC","Source Han Sans SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif';
@@ -1187,7 +1186,7 @@
       ids: lines.map(function (c) { return c.id; })
     };
     /* 分享弹层开着时：卡片与按钮排必须在**同一条中轴**上、都不能被挤出可视区
-       （他 2026-09-27 报过「下面的选项会偏移」，这行读数就是盯它的） */
+       （这行读数盯的就是卡片与按钮同一条中轴） */
     if (shareBox) {
       var cb = rectOf(shareBox.querySelector('.share-card')), ab = rectOf(shareBox.querySelector('.shade-actions'));
       var vw = document.documentElement.clientWidth;
@@ -1197,7 +1196,7 @@
       data.shareCardMid = cb ? Math.round((cb.l + cb.r) / 2) : null;
       data.shareActionsMid = ab ? Math.round((ab.l + ab.r) / 2) : null;
       /* 判据：卡片与按钮排同轴 **且按钮排不许超出卡片左右边**（光同轴不够——按钮排比卡片宽时
-         按钮顶在那一排最左边，看着还是「选项会偏移」，2026-09-27 他连报两次） */
+         按钮顶在那一排最左边，看着还是「选项会偏移」） */
       data.shareFit = !!(cb && ab) && cb.l >= 0 && ab.l >= 0 && ab.r <= vw + 1 && cb.r <= vw + 1 &&
         Math.abs((cb.l + cb.r) / 2 - (ab.l + ab.r) / 2) <= 1 &&
         ab.l >= cb.l - 1 && ab.r <= cb.r + 1;
