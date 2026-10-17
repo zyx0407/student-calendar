@@ -378,6 +378,7 @@
   })();
 
   /* ── 数据 ─────────────────────────── */
+  var VERSION = '1.1';
   var KZ = window.KAOZHENG || {};
   var META = KZ.元信息 || {};
   var CATS = KZ.类别 || [];
@@ -635,6 +636,7 @@
   }
   function domainOf(u) { return String(u || '').replace(/^https?:\/\//, '').replace(/\/$/, ''); }
   function hostOf(u) { var m = /^https?:\/\/([^/?#]+)/.exec(String(u || '')); return m ? m[1] : domainOf(u); }
+  function shareHost(u) { return /^https?:/i.test(String(u || '')) ? hostOf(u) : '本机文件'; }
   /* 分享卡上放最近一批报名 + 最近两场考试（全批次会挤成一团）。
      DOM 与 canvas 存图**共用这两个函数**，免得「页面上写两场、存下来的图只有一场」 */
   function shareRegText(c) {
@@ -666,8 +668,9 @@
       '</div>' +
       (note ? '<p class="sh-note">小鱼：' + esc(note) + '</p>' : '') +
       '<div class="sh-qr">' +
-        (g ? qrSVG(g, 96) : '<span class="noqr">这条链接太长，没生成二维码；直接复制链接发给他。</span>') +
-        '<span class="qt"><b>扫码看这张卡</b>' + esc(hostOf(url)) + '<br>链接：' + esc(url) + '</span>' +
+        (g ? qrSVG(g, 92) : '<span class="noqr">这条链接太长，没生成二维码；直接复制链接发给他。</span>') +
+        '<span class="qt"><b>扫码看这张卡</b><span class="host">' + esc(shareHost(url)) + '</span>' +
+        '<span class="upd">数据截至 ' + esc(c.数据截至 || META.更新时间 || '—') + '</span></span>' +
       '</div>' +
       '</div>';
   }
@@ -676,11 +679,13 @@
      永远画**浅色版**：存下来的图是发给同学 / 贴群里的，深色版在别人那儿不好读。
      版式跟页面上的分享卡对齐；二维码按模块画，落盘后仍能被扫码器解出原链接。 */
   function shareCanvas(c, g, url) {
-    var S = 2, W = 376, padX = 24, PT = 22, kCol = 62;
+    var S = 2, W = 540, padX = 44, PT = 46;
     var fam = '"Noto Sans SC","Source Han Sans SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif';
-    var hand = 'italic 12.8px "FangSong","仿宋","Noto Serif SC",serif'; /* 小鱼的话＝仿宋斜，跟站点 G1 一致（canvas 里 font-style 写进 shorthand） */
+    var hand = 'italic 15px "FangSong","仿宋","Noto Serif SC",serif';
+    var serif = '"Noto Serif SC","Source Han Serif SC","SimSun",serif';
     var mono = '"Consolas","Cascadia Mono",monospace';
-    var cInk = '#1c1d1f', cMuted = '#7e807c', cAmber = '#a8541f', cBg = '#f8f7f3', cLine = '#d9d7d1', cSoft = '#e6e4de';
+    var cInk = '#1c1d1f', cMuted = '#7e807c', cAmber = '#a8541f', cBg = '#f8f7f3',
+        cLine = '#d9d7d1', cSoft = '#e6e4de';
     var cv = document.createElement('canvas'), ctx = cv.getContext('2d');
     var ops = [], y = PT, qrRect = null;
     function T(t, font, color, x, yy) { ops.push({ k: 't', t: String(t), font: font, color: color, x: x, y: yy }); }
@@ -696,42 +701,55 @@
       out.push(line);
       return out;
     }
-    /* 顶行 */
-    T('大学生日历', '11px ' + mono, cAmber, padX, y + 9);
+    /* 超过行数就收尾加省略号，别让字被画布硬切 */
+    function clampLines(lines, max, font, maxW) {
+      if (lines.length <= max) return lines;
+      var out = lines.slice(0, max);
+      ctx.font = font;
+      var last = out[max - 1];
+      while (last.length > 1 && ctx.measureText(last + '…').width > maxW) last = last.slice(0, -1);
+      out[max - 1] = last + '…';
+      return out;
+    }
+    /* 顶行：品牌 + 署名 */
+    T('大学生日历', '15px ' + mono, cAmber, padX, y + 10);
     var who = '阿玖 · zyx0407';
-    ctx.font = '11px ' + mono;
-    T(who, '11px ' + mono, cMuted, W - padX - ctx.measureText(who).width, y + 9);
-    y += 13; L(padX, y, W - padX, y, cSoft); y += 8;
-    /* 标题 + 简称 */
-    wrap(c.名, '600 20px ' + fam, W - padX * 2).forEach(function (ln) { y += 27; T(ln, '600 20px ' + fam, cInk, padX, y); });
-    if (c.简称) { y += 20; T(c.简称, '11px ' + mono, cMuted, padX, y); }
-    /* 四行事实：左标签 + 右值（值太长就折行） */
-    y += 16; L(padX, y, W - padX, y, cSoft); y += 6;
-    var rows = [
-      ['报名时间', shareRegText(c), true],
-      ['考试时间', shareExamText(c), true],
-      ['费用', c.费用 || '以官网公告为准', false],
-      ['官方网站', (c.官网名 || '待补') + (c.官网 ? '（' + domainOf(c.官网) + '）' : ''), false]
-    ];
-    rows.forEach(function (row) {
-      var vf = row[2] ? '12.5px ' + mono : '13.5px ' + fam;
-      var lines = wrap(row[1], vf, W - padX * 2 - kCol);
-      T(row[0], '10.5px ' + mono, cMuted, padX, y + 12);
-      lines.forEach(function (ln, i) { T(ln, vf, cInk, padX + kCol, y + 12 + i * 19); });
-      y += Math.max(20, lines.length * 19) + 3;
+    ctx.font = '15px ' + mono;
+    T(who, '15px ' + mono, cMuted, W - padX - ctx.measureText(who).width, y + 10);
+    y += 24; L(padX, y, W - padX, y, cLine); y += 30;
+    /* 标题：宋体，最多两行 */
+    var titleFont = '600 31px ' + serif;
+    wrap(c.名, titleFont, W - padX * 2).slice(0, 2).forEach(function (ln) {
+      y += 40; T(ln, titleFont, cInk, padX, y);
     });
-    /* 小鱼那句（最多 3 行，跟页面上一样） */
+    if (c.简称) { y += 24; T(c.简称, '14px ' + mono, cMuted, padX, y); }
+    /* 事实：标签列 + 值列，行间细线 */
+    y += 20; L(padX, y, W - padX, y, cLine); y += 4;
+    var kCol = 126, vx = padX + kCol;
+    function row(k, v, vFont) {
+      var lines = clampLines(wrap(v, vFont, W - padX - vx), 2, vFont, W - padX - vx);
+      T(k, '13px ' + mono, cMuted, padX, y + 20);
+      lines.forEach(function (ln, i) { T(ln, vFont, cInk, vx, y + 20 + i * 24); });
+      y += Math.max(28, lines.length * 24) + 12;
+      L(padX, y, W - padX, y, cSoft); y += 10;
+    }
+    row('报名时间', shareRegText(c), '15px ' + mono);
+    row('考试时间', shareExamText(c), '15px ' + mono);
+    row('费用', c.费用 || '以官网公告为准', '16.5px ' + fam);
+    row('官方网站', (c.官网名 || '待补') + (c.官网 ? '（' + domainOf(c.官网) + '）' : ''), '16.5px ' + fam);
+    /* 小鱼那句：最多三行 */
     var note = String(c.说明 || '').replace(/^小鱼：/, '');
     if (note) {
-      y += 13;
-      var nl = wrap('小鱼：' + note, hand, W - padX * 2 - 12).slice(0, 3);
-      L(padX, y + 2, padX, y + nl.length * 21 - 4, cLine);
-      nl.forEach(function (ln, i) { T(ln, hand, cInk, padX + 12, y + 14 + i * 21); });
-      y += nl.length * 21;
+      y += 4;
+      var noteW = W - padX * 2 - 14;
+      var nl = clampLines(wrap('小鱼：' + note, hand, noteW), 3, hand, noteW);
+      L(padX, y + 4, padX, y + 4 + nl.length * 22 - 4, cLine);
+      nl.forEach(function (ln, i) { T(ln, hand, cInk, padX + 14, y + 18 + i * 22); });
+      y += nl.length * 22 + 12;
     }
-    /* 二维码 + 说明 */
-    y += 16; L(padX, y, W - padX, y, cSoft); y += 15;
-    var qrSide = 96, tx = padX + qrSide + 14, tw = W - padX - tx;
+    /* 二维码块 */
+    y += 16; L(padX, y, W - padX, y, cLine); y += 18;
+    var qrSide = 148, tx = padX + qrSide + 18, tw = W - padX - tx;
     if (g) {
       var total = g.size + 4, mod = qrSide / total;
       ops.push({ k: 'rect', x: padX, y: y, w: qrSide, h: qrSide, color: '#fff' });
@@ -742,14 +760,18 @@
         }
       }
       qrRect = { x: padX, y: y, size: qrSide, n: g.size, quiet: 2 };
+    } else {
+      ops.push({ k: 'rect', x: padX, y: y, w: qrSide, h: qrSide, color: cSoft });
     }
-    T('扫码看这张卡', '11.5px ' + fam, cInk, tx, y + 11);
-    wrap(hostOf(url), '10.5px ' + mono, tw).forEach(function (ln, i) { T(ln, '10.5px ' + mono, cMuted, tx, y + 29 + i * 17); });
-    var ul = wrap('链接：' + url, '10.5px ' + mono, tw);
-    ul.forEach(function (ln, i) { T(ln, '10.5px ' + mono, cMuted, tx, y + 29 + 17 + i * 17); });
-    var textH = 29 + 17 + ul.length * 17;
-    y += Math.max(qrSide, textH) + 22;
-
+    T('扫码看这张卡', '15px ' + fam, cInk, tx, y + 16);
+    wrap(shareHost(url), '13px ' + mono, tw).slice(0, 2).forEach(function (ln, i) {
+      T(ln, '13px ' + mono, cMuted, tx, y + 40 + i * 19);
+    });
+    T('数据截至 ' + (c.数据截至 || META.更新时间 || '—'), '12px ' + mono, cMuted, tx, y + 40 + 38 + 8);
+    y += qrSide + 18;
+    /* 页脚 */
+    T('大学生日历 · 阿玖 zyx0407', '12px ' + mono, cMuted, padX, y + 14);
+    y += 34;
     var H = y;
     cv.width = Math.round(W * S); cv.height = Math.round(H * S);
     ctx.scale(S, S);
@@ -762,6 +784,7 @@
     ctx.strokeStyle = '#cfcdc6'; ctx.lineWidth = 1; ctx.strokeRect(.5, .5, W - 1, H - 1);
     return { canvas: cv, qr: qrRect, scale: S, w: W, h: H };
   }
+
   /* 给验收用：把落盘那张图里的二维码区域**逐模块采样**回矩阵（证明存出来的图还能扫） */
   function shareMatrix(c, g, url) {
     var out = shareCanvas(c, g, url), q = out.qr;
@@ -789,6 +812,95 @@
       if (cv.toBlob) cv.toBlob(function (b) { go(b ? URL.createObjectURL(b) : cv.toDataURL('image/png')); }, 'image/png');
       else go(cv.toDataURL('image/png'));
     } catch (e) { go(cv.toDataURL('image/png')); }
+  }
+
+  /* ── 导出 .ics：把当前筛选结果写进日历文件（今天及以后的报名 / 考试） ── */
+  function icsPad2(n) { return (n < 10 ? '0' : '') + n; }
+  function icsDateOf(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+    return m ? m[1] + m[2] + m[3] : null;
+  }
+  function icsNextDay(d) {
+    var t = new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8)));
+    t.setUTCDate(t.getUTCDate() + 1);
+    return t.getUTCFullYear() + icsPad2(t.getUTCMonth() + 1) + icsPad2(t.getUTCDate());
+  }
+  function icsEsc(t) {
+    return String(t == null ? '' : t)
+      .replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,')
+      .replace(/\r?\n/g, '\\n');
+  }
+  function icsByteLen(s) {
+    try { return unescape(encodeURIComponent(s)).length; } catch (e) { return s.length; }
+  }
+  function icsFold(line) {
+    var out = '', buf = '', bytes = 0;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line.charAt(i), b = icsByteLen(ch);
+      if (bytes + b > 73) { out += buf + '\r\n '; buf = ''; bytes = 0; }
+      buf += ch; bytes += b;
+    }
+    return out + buf;
+  }
+  function exportICS(btn) {
+    var rows = CUR || [];
+    if (!rows.length) {
+      if (btn) { btn.textContent = '当前没有条目'; setTimeout(function () { btn.textContent = '导出日历'; }, 1800); }
+      return;
+    }
+    var stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    var lines = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0',
+      'PRODID:-//zyx0407//大学生日历//CN',
+      'CALSCALE:GREGORIAN',
+      'X-WR-CALNAME:大学生日历'
+    ];
+    var n = 0, seen = {};
+    function addEvent(c, date, summary, desc) {
+      var d = icsDateOf(date);
+      if (!d || String(date) < TODAY) return;
+      var key = c.id + '|' + summary + '|' + d;
+      if (seen[key]) return;
+      seen[key] = 1;
+      lines.push('BEGIN:VEVENT');
+      lines.push('UID:' + icsEsc(key) + '@work1.zyx0407.com');
+      lines.push('DTSTAMP:' + stamp);
+      lines.push('DTSTART;VALUE=DATE:' + d);
+      lines.push('DTEND;VALUE=DATE:' + icsNextDay(d));
+      lines.push('SUMMARY:' + icsEsc(summary));
+      lines.push('DESCRIPTION:' + icsEsc(desc));
+      lines.push('END:VEVENT');
+      n++;
+    }
+    rows.forEach(function (c) {
+      var upd = c.数据截至 || META.更新时间 || '';
+      var site = c.官网 || '';
+      exams(c).forEach(function (e) {
+        addEvent(c, e.日, '考试 · ' + c.名 + (e.类型 ? '（' + e.类型 + '）' : ''),
+          '官网：' + site + (e.备注 ? '；' + e.备注 : '') + '；数据截至 ' + upd);
+      });
+      regs(c).forEach(function (r) {
+        var span = r.起 && r.止 ? r.起 + ' 至 ' + r.止 : (r.起 || r.止 || '');
+        addEvent(c, r.起, '报名开始 · ' + c.名,
+          '报名窗口：' + span + '；来源：' + (r.来源 || '官方') + (r.备注 ? '；' + r.备注 : '') +
+          '；官网：' + site + '；数据截至 ' + upd);
+        addEvent(c, r.止, '报名截止 · ' + c.名,
+          '报名窗口：' + span + '；来源：' + (r.来源 || '官方') +
+          '；官网：' + site + '；数据截至 ' + upd);
+      });
+    });
+    lines.push('END:VCALENDAR');
+    var text = lines.map(icsFold).join('\r\n') + '\r\n';
+    var blob = new Blob([text], { type: 'text/calendar;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '大学生日历-' + new Date().toISOString().slice(0, 10) + '.ics';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    if (btn) {
+      btn.textContent = '已导出 ' + n + ' 个日程';
+      setTimeout(function () { btn.textContent = '导出日历'; }, 2400);
+    }
   }
 
   var shareBox = null;
@@ -949,6 +1061,13 @@
         : '· 窗口从 ' + START + ' 起（手动钉住）';
     }
   }
+  /* 窄屏：时间轴一开始把「当前月」滚到中间，别让人只看到半截 */
+  function scrollAxisToNow() {
+    var sc = document.querySelector('.tlscroll');
+    var now = document.querySelector('.axA-cell.now');
+    if (!sc || !now) return;
+    sc.scrollLeft = Math.max(0, now.offsetLeft - (sc.clientWidth - now.offsetWidth) / 2);
+  }
 
   /* ── 渲染：筛选（两级：大类 考研/考公/考证 → 类别） ── */
   function renderFilters() {
@@ -1087,7 +1206,7 @@
       '　·　数据截至 ' + esc(upd) +
       '　·　共 ' + ALL.length + ' 条　·　已标记 ' + Object.keys(marks).length + ' 项' +
       (warn ? '<br><span class="warn">数据已经 ' + age + ' 天没更新了，报名与考试时间以官网为准。</span>' : '');
-    document.getElementById('footSig').textContent = '大学生日历 · 数据截至 ' + upd;
+    document.getElementById('footSig').textContent = '大学生日历 · 数据截至 ' + upd + ' · v' + VERSION;
     var cats = CATS.map(function (x) { return x.名; }).join(' / ');
     document.getElementById('footNote').innerHTML =
       '报名与考试时间可能调整，以各证的官方网站为准' +
@@ -1097,7 +1216,9 @@
   /* ── 交互 ─────────────────────────── */
   function paint() {
     CUR = applyFilters();          // 只算一次，轴与列表共用同一份结果
-    renderAxis(CUR); renderFilters(); renderList(CUR); renderMeta(); probe();
+    renderAxis(CUR); renderFilters(); renderList(CUR); renderMeta();
+    if (window.matchMedia && window.matchMedia('(max-width:640px)').matches) scrollAxisToNow();
+    probe();
   }
 
   function scrollToCard(id) {
@@ -1129,6 +1250,8 @@
       // 点筛选重画时别把输入框里的字清掉
       qEl.value = cur.q;
     }
+    var icsEl = document.getElementById('icsBtn');
+    if (icsEl) icsEl.addEventListener('click', function () { exportICS(icsEl); });
     /* 点月份格 → 滚到那个月的分组（那个月没条目就滚到「窗口内暂无安排」那组） */
     document.getElementById('tl').addEventListener('click', function (e) {
       var cell = e.target.closest('.axA-cell[data-m]');
