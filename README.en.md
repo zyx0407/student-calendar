@@ -11,12 +11,12 @@ Static · zero dependencies · no build · no third-party libraries (even the QR
 
 ## What's on the page
 
-- **Month axis** — 12 equal cells, each showing "reg N · exam N": how many items have an open registration window and how many test days fall in that month. The current month gets an amber line. The axis pins to the top while scrolling and lets go at the end of the list, without covering the footer. Click a cell to jump to that month's group.
-- **Cards** — grouped by month, sorted by category, then by "next thing happening". Card = name + abbreviation + category + countdown → registration window / test dates / fee → official site → who it's for → a plain-language note → data-as-of · official-site check · status · share.
+- **Month axis** — 12 equal cells, each showing "reg N · exam N": how many items have an open registration window and how many test days fall in that month. The current month gets an amber line. The axis pins to the top while scrolling and lets go at the end of the list, without covering the footer. Click a cell to jump to that month's group (a month with nothing scheduled jumps to the next month that has items and says so).
+- **Cards** — grouped by month, sorted by category, then by "next thing happening". Card = name + abbreviation + category + countdown → registration window / test dates / fee → official site (the whole line is a link, opens in a new tab) → who it's for → a plain-language note → data-as-of · status · share.
 - **Filters** — track (postgraduate / civil service / certificates) · category (language / computing / finance & business / food & nutrition / teaching / emerging skills / study abroad) · status · search. Search is two-stage: first match names, abbreviations, categories and official-site names; only if nothing hits does it fall back to the note text, and the list header says so.
 - **Status marks** — mark each item as preparing / obtained / skipping; stored in `localStorage` (key `kaozheng.status.v1`), on this device only, never uploaded.
 - **Share** — the share sheet is one finished card (registration · test · fee · official site · QR code), saveable as a 2× PNG, or copy a link with `?card=<id>` that lands on that card and highlights it.
-- **Calendar export** — "Export calendar" in the top right writes the **current filter** to `.ics` (registration start / deadline / tests from today onward, all-day events, with official site and data-as-of) for importing into a phone calendar.
+- **Calendar export** — "Export calendar · N" in the top right writes the **current filter × the 12-month axis window** to `.ics` (registration start / deadline / tests from today until the end of the window, all-day events, with official site and data-as-of) for importing into a phone calendar; the N on the button is exactly how many events this export will contain.
 - **Mobile** — the whole page reflows for narrow screens: one-line header, tighter hero, horizontally scrolling filter rows, a 73px sticky timeline strip, single-column card facts, and a fully scrollable share sheet.
 
 ## Quick start
@@ -41,7 +41,7 @@ The `QR` module inside `app.js`, with zero dependencies: byte mode (UTF-8) + EC 
 
 ## Visual design
 
-Same system as the main site: warm paper by day, dark gallery by night; follows the system by default, manual switch is remembered. One accent colour (amber) used only for indices, links, underlines and the current state. Three type styles — Source Han Serif (headings), Source Han Sans (body), FangSong italic (side notes).
+Same system as the main site: warm paper by day, dark gallery by night; follows the system by default, manual switch is remembered. One accent colour (amber) is used in one place only — the current state (countdown badge, current month, selected status mark); everything else is layered with background contrast, weight and size. Three type styles — Source Han Serif (headings), Source Han Sans (body), FangSong italic (side notes).
 
 ## URL parameters
 
@@ -71,5 +71,6 @@ Same system as the main site: warm paper by day, dark gallery by night; follows 
 
 ## Changelog
 
+- **v1.2 (2026-10-19)** — fixed month-cell jumps (4 of 12 cells did nothing, the rest landed under the sticky bar); fixed three sticky-bar bugs (the page jumped up 128px when the bar pinned, it pinned 115px too early, and it never pinned again after unpinning once); the "official site" line on each card is now a real link (was plain text on all 22 cards) and the duplicate footer link is gone; `.ics` export is limited to the 12-month axis window (it used to dump dates through 2029 — 60 of 123 events were outside the window) and the button shows the event count; palette hierarchy tuned (page/card contrast, heavier dates, fee and side note pushed back, countdown as an amber badge).
 - **v1.1 (2026-10-17)** — full mobile reflow (header / hero / filters / sticky timeline / groups / cards / share sheet); share card and saved image redesigned (serif title, paper layout, ellipsis for long text, no mobile overflow); "Export calendar" `.ics`; the "阿玖 zyx0407" header now links back to the main site; version shown in the footer.
 - **v1.0 (2026-09-27)** — first release: 22 exams × a rolling 12-month timeline.
