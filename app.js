@@ -378,7 +378,7 @@
   })();
 
   /* ── 数据 ─────────────────────────── */
-  var VERSION = '1.1';
+  var VERSION = '1.2';
   var KZ = window.KAOZHENG || {};
   var META = KZ.元信息 || {};
   var CATS = KZ.类别 || [];
@@ -561,7 +561,7 @@
   /* ── 吸顶：用滚动事件钉住时间轴条 ─────
      为什么不用 position:sticky：在这张页面里它只吸一截就跟着走（实测 top=-2411），
      逐层排查没找到破坏者 → 自己钉，行为可测。 */
-  var pin = { on: false, box: null, pad: 0 };
+  var pin = { on: false, box: null, pad: 0, tw: null };
   function pinCache(bar) {
     var zone = document.getElementById('stickyzone') || bar.parentNode;
     var wrap = document.querySelector('.wrap');
@@ -570,6 +570,11 @@
     bar.style.width = ''; bar.style.left = ''; bar.style.top = '';
     var wr = wrap ? wrap.getBoundingClientRect() : null;
     var bh = bar.offsetHeight;
+    /* ⚠️ 钉住时条变 fixed，会从文档流里被抽走一整条的高度（实测文档高 10257 → 10104），
+       整页内容跟着往上窜一截，所有锚点/scrollIntoView 的落点全偏（桌面差过 154px）。
+       给 .tlwrap 锁一个等高盒子：钉住前后文档高度不变，跳转才落得准。 */
+    var tw = bar.parentNode;
+    if (tw) { tw.style.height = bh + 'px'; pin.tw = tw; }
     var zTop = zone.getBoundingClientRect().top + window.pageYOffset;
     pin.box = {
       /* ⚠️ 钉住时 left/width 要用**内容容器的边框盒**：
@@ -592,9 +597,11 @@
       pinCache(bar);
       pin.on = wasOn;
     }
-    if (!pin.box || !pin.on) pinCache(bar);
+    if (!pin.box) pinCache(bar);
     var b = pin.box, y = window.pageYOffset;
-    var should = (y + b.bh > b.barTop) && (y + b.bh < b.zoneBottom);
+    /* 钉住时机＝条的顶边刚好撞到视口顶（y >= barTop）。旧写法 y+bh > barTop 会早钉一整个条高，
+       条在还剩 100 多像素时就「啪」地吸上去（实测桌面 1440 下差 115px）。 */
+    var should = (y >= b.barTop - 1) && (y + b.bh < b.zoneBottom);
     if (should === pin.on) return;
     if (should) {
       bar.style.width = b.w + 'px';
@@ -604,6 +611,9 @@
     } else {
       bar.style.width = ''; bar.style.left = ''; bar.style.top = '';
       bar.classList.remove('pinned');
+      /* ⚠️ 这里必须先把这个状态改回 false 再 return：旧代码直接 return，
+         pin.on 永远停在 true → 条脱开一次以后就再也不钉了（滚回顶部再往下滚，条不会吸） */
+      pin.on = false;
       pinCache(bar);      // 脱开后重新量一次（高度可能被主题或筛选改过）
       return;
     }
@@ -842,10 +852,54 @@
     }
     return out + buf;
   }
+  /* ── 导出 .ics：把**页面上真看得到的东西**写进日历文件 ──
+     口径＝当前筛选结果 × 时间轴这 12 个月（今天起、窗口末为止）。
+     旧版只卡了「今天起」，而库铺到 2029 —— 实测 123 个日程里 60 个（49%）在 12 个月窗口外，
+     导进手机日历就是一串三年后的东西，看着就是「怎么把所有的都导出来了」。 */
+  function icsWindowEnd() {
+    var m = WINDOW[MONTHS - 1];                                        // 例：'2027-09'
+    var d = new Date(Date.UTC(+m.slice(0, 4), +m.slice(5), 0));         // 该月最后一天
+    return d.getUTCFullYear() + icsPad2(d.getUTCMonth() + 1) + icsPad2(d.getUTCDate());
+  }
+  /* 按导出规则攒事件清单：按钮上的条数和文件里的条数必须来自同一份计算 */
+  function icsEvents(rows) {
+    var end = icsWindowEnd(), out = [], seen = {};
+    function add(c, date, summary, desc) {
+      var d = icsDateOf(date);
+      if (!d || String(date) < TODAY || d > end) return;
+      var key = c.id + '|' + summary + '|' + d;
+      if (seen[key]) return;
+      seen[key] = 1;
+      out.push({ uid: key, start: d, end: icsNextDay(d), summary: summary, desc: desc });
+    }
+    (rows || []).forEach(function (c) {
+      var upd = c.数据截至 || META.更新时间 || '';
+      var site = c.官网 || '';
+      exams(c).forEach(function (e) {
+        add(c, e.日, '考试 · ' + c.名 + (e.类型 ? '（' + e.类型 + '）' : ''),
+          '官网：' + site + (e.备注 ? '；' + e.备注 : '') + '；数据截至 ' + upd);
+      });
+      regs(c).forEach(function (r) {
+        var span = r.起 && r.止 ? r.起 + ' 至 ' + r.止 : (r.起 || r.止 || '');
+        add(c, r.起, '报名开始 · ' + c.名,
+          '报名窗口：' + span + '；来源：' + (r.来源 || '官方') + (r.备注 ? '；' + r.备注 : '') +
+          '；官网：' + site + '；数据截至 ' + upd);
+        add(c, r.止, '报名截止 · ' + c.名,
+          '报名窗口：' + span + '；来源：' + (r.来源 || '官方') +
+          '；官网：' + site + '；数据截至 ' + upd);
+      });
+    });
+    return out;
+  }
+  /* 按钮上直接标「这一下会导出几条」，别让人猜是不是又全导了（窄屏由 CSS 把数字藏掉） */
+  function icsLabel(n) { return '导出日历' + (n ? '<span class="n">' + n + '</span>' : ''); }
   function exportICS(btn) {
-    var rows = CUR || [];
-    if (!rows.length) {
-      if (btn) { btn.textContent = '当前没有条目'; setTimeout(function () { btn.textContent = '导出日历'; }, 1800); }
+    var list = icsEvents(CUR);
+    if (!list.length) {
+      if (btn) {
+        btn.textContent = '当前没有条目';
+        setTimeout(function () { btn.innerHTML = icsLabel(0); }, 1800);
+      }
       return;
     }
     var stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
@@ -855,39 +909,15 @@
       'CALSCALE:GREGORIAN',
       'X-WR-CALNAME:大学生日历'
     ];
-    var n = 0, seen = {};
-    function addEvent(c, date, summary, desc) {
-      var d = icsDateOf(date);
-      if (!d || String(date) < TODAY) return;
-      var key = c.id + '|' + summary + '|' + d;
-      if (seen[key]) return;
-      seen[key] = 1;
+    list.forEach(function (ev) {
       lines.push('BEGIN:VEVENT');
-      lines.push('UID:' + icsEsc(key) + '@work1.zyx0407.com');
+      lines.push('UID:' + icsEsc(ev.uid) + '@work1.zyx0407.com');
       lines.push('DTSTAMP:' + stamp);
-      lines.push('DTSTART;VALUE=DATE:' + d);
-      lines.push('DTEND;VALUE=DATE:' + icsNextDay(d));
-      lines.push('SUMMARY:' + icsEsc(summary));
-      lines.push('DESCRIPTION:' + icsEsc(desc));
+      lines.push('DTSTART;VALUE=DATE:' + ev.start);
+      lines.push('DTEND;VALUE=DATE:' + ev.end);
+      lines.push('SUMMARY:' + icsEsc(ev.summary));
+      lines.push('DESCRIPTION:' + icsEsc(ev.desc));
       lines.push('END:VEVENT');
-      n++;
-    }
-    rows.forEach(function (c) {
-      var upd = c.数据截至 || META.更新时间 || '';
-      var site = c.官网 || '';
-      exams(c).forEach(function (e) {
-        addEvent(c, e.日, '考试 · ' + c.名 + (e.类型 ? '（' + e.类型 + '）' : ''),
-          '官网：' + site + (e.备注 ? '；' + e.备注 : '') + '；数据截至 ' + upd);
-      });
-      regs(c).forEach(function (r) {
-        var span = r.起 && r.止 ? r.起 + ' 至 ' + r.止 : (r.起 || r.止 || '');
-        addEvent(c, r.起, '报名开始 · ' + c.名,
-          '报名窗口：' + span + '；来源：' + (r.来源 || '官方') + (r.备注 ? '；' + r.备注 : '') +
-          '；官网：' + site + '；数据截至 ' + upd);
-        addEvent(c, r.止, '报名截止 · ' + c.名,
-          '报名窗口：' + span + '；来源：' + (r.来源 || '官方') +
-          '；官网：' + site + '；数据截至 ' + upd);
-      });
     });
     lines.push('END:VCALENDAR');
     var text = lines.map(icsFold).join('\r\n') + '\r\n';
@@ -898,8 +928,8 @@
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
     if (btn) {
-      btn.textContent = '已导出 ' + n + ' 个日程';
-      setTimeout(function () { btn.textContent = '导出日历'; }, 2400);
+      btn.textContent = '已导出 ' + list.length + ' 个日程';
+      setTimeout(function () { btn.innerHTML = icsLabel(list.length); }, 2400);
     }
   }
 
@@ -1061,7 +1091,9 @@
         : '· 窗口从 ' + START + ' 起（手动钉住）';
     }
   }
-  /* 窄屏：时间轴一开始把「当前月」滚到中间，别让人只看到半截 */
+  /* 窄屏：时间轴第一次渲染时把「当前月」滚到中间；之后重画（标状态 / 换筛选 / 搜索）
+     不再抢用户点过的位置 —— 旧版每次 paint 都抢，点着 4 月然后标个状态就跳回 10 月。 */
+  var axisAutoDone = false;
   function scrollAxisToNow() {
     var sc = document.querySelector('.tlscroll');
     var now = document.querySelector('.axA-cell.now');
@@ -1143,11 +1175,21 @@
     if (all.length > 2) out += '<span class="dim"> 共 ' + all.length + ' 场</span>';
     return out + (c.未公布 ? '<span class="tag">待公布</span>' : '');
   }
+  /* 官方网站行：**整行就是链接**。旧版这行是纯文本，但 CSS 给了 hover 变琥珀 + 域名下划线，
+     看着就是能点的 —— 人都点它、点了一点反应没有；页脚那颗真链接「官网核对」没人点。
+     所以：官网只留这一个入口，页脚那颗删掉。 */
+  function siteHTML(c) {
+    if (!c.官网 && !c.官网名) return '';
+    var name = esc(c.官网名 || domainOf(c.官网));
+    if (!c.官网) return '<div class="card-site">官方网站：' + name + '</div>';
+    return '<a class="card-site" href="' + esc(c.官网) + '" target="_blank" rel="noopener">官方网站：' + name +
+      ' <span class="u">' + esc(domainOf(c.官网)) + ' ↗</span></a>';
+  }
   function cardHTML(c) {
     var st = marks[c.id] || '', cd = countdown(c);
     /* 胶囊：考研/考公 显示大类；考证的显示二级类别。简称跟胶囊同名时只留一个，别「考研 考研」 */
     var chip = (c.大类 && c.大类 !== '考证') ? bigName(c.大类) : catName(c.类别);
-    return '<article class="card" id="c-' + esc(c.id) + '" data-id="' + esc(c.id) + '">' +
+    return '<article class="card" id="c-' + esc(c.id) + '" data-id="' + esc(c.id) + '" data-big="' + esc(c.大类 || '考证') + '">' +
       '<div class="card-top">' +
         '<h2>' + esc(c.名) + (c.简称 && c.简称 !== chip ? '<span class="abbr">' + esc(c.简称) + '</span>' : '') + '</h2>' +
         '<span class="cat">' + esc(chip) + '</span>' +
@@ -1158,13 +1200,11 @@
         '<div class="f"><span class="k">考试日</span><span class="v">' + examCellHTML(c) + '</span></div>' +
         '<div class="f"><span class="k">费用</span><span class="v">' + esc(c.费用 || '以官网公告为准') + '</span></div>' +
       '</div>' +
-      (c.官网 || c.官网名 ? '<div class="card-site">官方网站：' + esc(c.官网名 || domainOf(c.官网)) +
-        (c.官网 ? ' <span class="u">' + esc(domainOf(c.官网)) + ' ↗</span>' : '') + '</div>' : '') +
+      (c.官网 || c.官网名 ? siteHTML(c) : '') +
       (c.适合 ? '<p class="card-for"><span class="k">适合</span>' + esc(c.适合) + '</p>' : '') +
       (c.说明 ? '<p class="note"><strong>小鱼：</strong>' + esc(String(c.说明).replace(/^小鱼：/, '')) + '</p>' : '') +
       '<div class="foot">' +
         '<span class="upd">数据截至 ' + esc(c.数据截至 || META.更新时间 || '—') + '</span>' +
-        (c.官网 ? '<a class="upd" href="' + esc(c.官网) + '" target="_blank" rel="noopener">官网核对 ↗</a>' : '') +
         '<span class="sts">' + STATUS.map(function (s) {
           return '<button type="button" class="st ' + esc(s) + (st === s ? ' on' : '') + '" data-id="' + esc(c.id) +
             '" data-mk="' + esc(s) + '" aria-pressed="' + (st === s) + '">' + esc(mkLabel(c, s)) + '</button>';
@@ -1175,9 +1215,12 @@
   }
   function renderList(rows) {
     var host = document.getElementById('list');
+    /* 这一行要说清「现在看的是哪一片」：选了大类就报大类名（旧版选考研还写「全部类别」） */
+    var scope = cur.big !== '全部' ? bigName(cur.big)
+      : (cur.cat === '全部' ? '全部类别' : catName(cur.cat));
     var head = '<div class="list-head"><span>共 ' + rows.length + ' 条' +
       (cur.q ? (LOOSE ? '（含说明正文匹配）' : '（按证名/简称匹配）') : '') + '</span><span>' +
-      esc(cur.cat === '全部' ? '全部类别' : catName(cur.cat)) + ' · ' + esc(cur.st) + '</span></div>';
+      esc(scope) + ' · ' + esc(cur.st) + '</span></div>';
     if (!rows.length) {
       host.innerHTML = head + '<p class="empty">这一类暂时没有条目 —— 换一个类别，或点「状态：全部」。</p>';
       return;
@@ -1217,7 +1260,12 @@
   function paint() {
     CUR = applyFilters();          // 只算一次，轴与列表共用同一份结果
     renderAxis(CUR); renderFilters(); renderList(CUR); renderMeta();
-    if (window.matchMedia && window.matchMedia('(max-width:640px)').matches) scrollAxisToNow();
+    if (!axisAutoDone && window.matchMedia && window.matchMedia('(max-width:640px)').matches) {
+      scrollAxisToNow(); axisAutoDone = true;
+    }
+    /* 导出按钮上的条数跟着筛选走（跟文件里真会写的条数是同一个计算） */
+    var ib = document.getElementById('icsBtn');
+    if (ib) ib.innerHTML = icsLabel(icsEvents(CUR).length);
     probe();
   }
 
@@ -1227,6 +1275,34 @@
     el.scrollIntoView({ behavior: STILL ? 'auto' : 'smooth', block: 'center' });
     el.classList.add('hit');
     setTimeout(function () { el.classList.remove('hit'); }, 1600);
+  }
+  /* 滚动到某个块：自己算落点，让目标停在吸顶条下沿。
+     为什么要自己算：条是 fixed 钉的，scrollIntoView 的 start 会被条压在底下（桌面差 154px）。 */
+  function barHeight() {
+    var bar = document.getElementById('tlbar');
+    return bar ? bar.offsetHeight : 0;
+  }
+  function scrollToEl(el, gap) {
+    if (!el) return;
+    var top = el.getBoundingClientRect().top + window.pageYOffset - barHeight() - (gap == null ? 12 : gap);
+    var max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    window.scrollTo({ top: Math.max(0, Math.min(Math.round(top), max)), behavior: STILL ? 'auto' : 'smooth' });
+  }
+  function monthLabel(m) { return m.slice(0, 4) + ' 年 ' + (+m.slice(5)) + ' 月'; }
+  /* 小提示条：月份格点了没条目时给一句实话，别让人以为键坏了 */
+  var toastT = 0;
+  function toast(t) {
+    var el = document.getElementById('kzToast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'kzToast'; el.className = 'toast';
+      el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+      document.body.appendChild(el);
+    }
+    el.textContent = t;
+    el.classList.add('on');
+    clearTimeout(toastT);
+    toastT = setTimeout(function () { el.classList.remove('on'); }, 2400);
   }
   function toggleMark(id, mk) {
     if (mk && marks[id] === mk) delete marks[id];
@@ -1252,13 +1328,29 @@
     }
     var icsEl = document.getElementById('icsBtn');
     if (icsEl) icsEl.addEventListener('click', function () { exportICS(icsEl); });
-    /* 点月份格 → 滚到那个月的分组（那个月没条目就滚到「窗口内暂无安排」那组） */
+    /* 点月份格 → 滚到那个月的分组。那个月没条目就落到其后最近的月份分组（都没有就落清单顶部），
+       无论如何都要有反应 —— 旧代码这里对 4 个月的格子静默 return，看着就是「点了不跳」。 */
     document.getElementById('tl').addEventListener('click', function (e) {
       var cell = e.target.closest('.axA-cell[data-m]');
       if (!cell) return;
       [].forEach.call(document.querySelectorAll('.axA-cell'), function (x) { x.classList.toggle('sel', x === cell); });
-      var grp = document.getElementById('g-' + cell.getAttribute('data-m')) || document.getElementById('g-wait');
-      if (grp) grp.scrollIntoView({ behavior: STILL ? 'auto' : 'smooth', block: 'start' });
+      /* 窄屏轴是横滚的：选中格要自己滚到中间，别让人跳完了轴还停在 10 月 */
+      var sc = document.querySelector('.tlscroll');
+      if (sc) sc.scrollLeft = Math.max(0, cell.offsetLeft - (sc.clientWidth - cell.offsetWidth) / 2);
+      var m = cell.getAttribute('data-m'), grp = document.getElementById('g-' + m), hop = null, i;
+      if (!grp) {
+        var after = WINDOW.filter(function (x) { return mnum(x) > mnum(m); });
+        for (i = 0; i < after.length && !grp; i++) {
+          grp = document.getElementById('g-' + after[i]);
+          if (grp) hop = after[i];
+        }
+        if (!grp) grp = document.getElementById('g-wait');
+      }
+      scrollToEl(grp || document.querySelector('.list-head'), 14);
+      if (grp) grp.classList.add('jump');
+      setTimeout(function () { if (grp) grp.classList.remove('jump'); }, 1400);
+      if (hop) toast(monthLabel(m) + ' 没有安排，跳到 ' + monthLabel(hop));
+      else if (!grp) toast(monthLabel(m) + ' 没有安排');
     });
     document.getElementById('list').addEventListener('click', function (e) {
       var sh = e.target.closest('button[data-share]');
@@ -1271,10 +1363,12 @@
       if (!b) return;
       toggleMark(b.getAttribute('data-id'), b.getAttribute('data-mk'));
     });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeShare(); });
-    // 键盘：/ 聚焦搜索（暂未做输入框，保留钩子）
+    /* 键盘：Esc 只干一件事 —— 分享弹层开着就关弹层；没开才退回「状态：全部」。
+       （旧版两个监听器各管一头，弹层开着按 Esc 会把状态筛选也顺手重置掉） */
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && cur.st !== '全部') { cur.st = '全部'; paint(); }
+      if (e.key !== 'Escape') return;
+      if (shareBox) { closeShare(); return; }
+      if (cur.st !== '全部') { cur.st = '全部'; paint(); }
     });
     // 浏览器本地存储被清掉时重画
     window.addEventListener('storage', function (e) {
@@ -1306,6 +1400,7 @@
       theme: document.documentElement.getAttribute('data-theme') || 'day',
       groups: document.querySelectorAll('.grp').length,
       monthCells: document.querySelectorAll('.axA-cell').length,
+      ics: icsEvents(CUR).length, icsEnd: icsWindowEnd(),   // 导出条数与窗口末（验收用）
       ids: lines.map(function (c) { return c.id; })
     };
     /* 分享弹层开着时：卡片与按钮排必须在**同一条中轴**上、都不能被挤出可视区
