@@ -378,7 +378,7 @@
   })();
 
   /* ── 数据 ─────────────────────────── */
-  var VERSION = '1.2';
+  var VERSION = '1.3';
   var KZ = window.KAOZHENG || {};
   var META = KZ.元信息 || {};
   var CATS = KZ.类别 || [];
@@ -1035,16 +1035,62 @@
     });
     return st;
   }
-  /* 按月分组：一条证只出现在「窗口里第一个有事的月份」那一组（不重复出现） */
+  /* 本月考试：一条证只在「第一个有事的月」出整卡，但它的考试日属于考试那个月的日程。
+     2026-10-20 加：每月先列证卡（报名/首个事件），再列「本月考试」行（日期+证名，点击跳卡）——
+     否则 3/8/9 月这类「考试在、卡片不在」的月份会被读成空月。 */
+  function examRowsOf(rows) {
+    var out = {};
+    rows.forEach(function (c) {
+      fitOf(c).exams.forEach(function (e) {
+        var m = ym(e.日);
+        if (!m || WINDOW.indexOf(m) < 0) return;
+        (out[m] = out[m] || []).push({ c: c, e: e });
+      });
+    });
+    Object.keys(out).forEach(function (m) {
+      out[m].sort(function (a, b) { return String(a.e.日) < String(b.e.日) ? -1 : (String(a.e.日) > String(b.e.日) ? 1 : 0); });
+    });
+    return out;
+  }
+  function examDay(e) {
+    var d = String(e.日 || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return (+d.slice(5)) + '月';
+    var a = (+d.slice(5, 7)) + '/' + (+d.slice(8, 10));
+    var b = String(e.日止 || '');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(b) && b !== d) {
+      a += (b.slice(0, 7) === d.slice(0, 7)) ? '–' + (+b.slice(8, 10)) : '–' + (+b.slice(5, 7)) + '/' + (+b.slice(8, 10));
+    }
+    return a;
+  }
+  function examTentative(e) {
+    return /待官方公布|往年规律|推断/.test(String(e.备注 || '') + String(e.类型 || ''));
+  }
+  function examListHTML(list) {
+    if (!list || !list.length) return '';
+    return '<div class="exams"><p class="exams-h">本月考试</p><ul class="exam-list">' + list.map(function (it) {
+      var c = it.c, e = it.e;
+      return '<li><button type="button" class="exam-row" data-jump="' + esc(c.id) + '" title="跳到这张证">' +
+        '<span class="d">' + esc(examDay(e)) + '</span>' +
+        '<span class="n">' + esc(c.简称 || c.名) + '</span>' +
+        '<span class="ty">' + esc(e.类型 || '考试') + '</span>' +
+        (examTentative(e) ? '<span class="tent">待官方公布</span>' : '') +
+        '</button></li>';
+    }).join('') + '</ul></div>';
+  }
+  /* 按月分组：整卡只出现在「窗口里第一个有事的月份」；考试行按考试日归月（可能补出只有考试的月份） */
   function groupByMonth(rows) {
     var map = {}, none = [];
     rows.forEach(function (c) {
       var f = fitOf(c);
       if (!f.first) { none.push(c); return; }
-      (map[f.first] = map[f.first] || []).push(c);
+      (map[f.first] = map[f.first] || { items: [], exams: [] }).items.push(c);
     });
-    var out = Object.keys(map).sort().map(function (m) { return { ym: m, items: sortInGroup(map[m]) }; });
-    if (none.length) out.push({ ym: 'wait', items: sortInGroup(none), wait: true });
+    var ex = examRowsOf(rows);
+    Object.keys(ex).forEach(function (m) { (map[m] = map[m] || { items: [], exams: [] }).exams = ex[m]; });
+    var out = Object.keys(map).sort().map(function (m) {
+      return { ym: m, items: sortInGroup(map[m].items), exams: map[m].exams };
+    });
+    if (none.length) out.push({ ym: 'wait', items: sortInGroup(none), exams: [], wait: true });
     return out;
   }
   /* 组内顺序：先按类别（和筛选条一个次序），同类里**最近要有事的排前面**（跟卡片上那句倒计时对得上） */
@@ -1227,14 +1273,15 @@
     }
     host.innerHTML = head + groupByMonth(rows).map(function (grp) {
       var wait = !!grp.wait;
+      var cnt = grp.items.length + grp.exams.length;
       return '<section class="grp" id="g-' + esc(grp.ym) + '">' +
         '<div class="grp-side">' +
           '<span class="mo"' + (wait ? ' style="font-size:20px"' : '') + '>' + esc(wait ? '待' : grp.ym.slice(5)) + '</span>' +
           (wait ? '' : '<span class="u">月</span>') +
           '<span class="yr">' + esc(wait ? '窗口内暂无安排' : grp.ym.slice(0, 4)) + '</span>' +
-          '<span class="cnt">' + grp.items.length + ' 条</span>' +
+          '<span class="cnt">' + cnt + ' 条</span>' +
         '</div>' +
-        '<div class="grp-body">' + grp.items.map(cardHTML).join('') + '</div>' +
+        '<div class="grp-body">' + grp.items.map(cardHTML).join('') + examListHTML(grp.exams) + '</div>' +
         '</section>';
     }).join('');
   }
@@ -1353,6 +1400,8 @@
       else if (!grp) toast(monthLabel(m) + ' 没有安排');
     });
     document.getElementById('list').addEventListener('click', function (e) {
+      var j = e.target.closest('button[data-jump]');
+      if (j) { scrollToCard(j.getAttribute('data-jump')); return; }
       var sh = e.target.closest('button[data-share]');
       if (sh) {
         var c0 = getCert(sh.getAttribute('data-share'));
@@ -1399,6 +1448,7 @@
       deep: DEEP || '', shareBtns: document.querySelectorAll('.share-btn').length,
       theme: document.documentElement.getAttribute('data-theme') || 'day',
       groups: document.querySelectorAll('.grp').length,
+      examRows: document.querySelectorAll('.exam-row').length,
       monthCells: document.querySelectorAll('.axA-cell').length,
       ics: icsEvents(CUR).length, icsEnd: icsWindowEnd(),   // 导出条数与窗口末（验收用）
       ids: lines.map(function (c) { return c.id; })
