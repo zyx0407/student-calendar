@@ -680,7 +680,7 @@
       '<div class="sh-qr">' +
         (g ? qrSVG(g, 92) : '<span class="noqr">这条链接太长，没生成二维码；直接复制链接发给他。</span>') +
         '<span class="qt"><b>扫码看这张卡</b><span class="host">' + esc(shareHost(url)) + '</span>' +
-        '<span class="upd">数据截至 ' + esc(c.数据截至 || META.更新时间 || '—') + '</span></span>' +
+        '<span class="upd">更新于 ' + esc(c.数据截至 || META.更新时间 || '—') + '</span></span>' +
       '</div>' +
       '</div>';
   }
@@ -777,7 +777,7 @@
     wrap(shareHost(url), '13px ' + mono, tw).slice(0, 2).forEach(function (ln, i) {
       T(ln, '13px ' + mono, cMuted, tx, y + 40 + i * 19);
     });
-    T('数据截至 ' + (c.数据截至 || META.更新时间 || '—'), '12px ' + mono, cMuted, tx, y + 40 + 38 + 8);
+    T('更新于 ' + (c.数据截至 || META.更新时间 || '—'), '12px ' + mono, cMuted, tx, y + 40 + 38 + 8);
     y += qrSide + 18;
     /* 页脚 */
     T('大学生日历 · 阿玖 zyx0407', '12px ' + mono, cMuted, padX, y + 14);
@@ -877,16 +877,16 @@
       var site = c.官网 || '';
       exams(c).forEach(function (e) {
         add(c, e.日, '考试 · ' + c.名 + (e.类型 ? '（' + e.类型 + '）' : ''),
-          '官网：' + site + (e.备注 ? '；' + e.备注 : '') + '；数据截至 ' + upd);
+          '官网：' + site + (e.备注 ? '；' + e.备注 : '') + '；更新于 ' + upd);
       });
       regs(c).forEach(function (r) {
         var span = r.起 && r.止 ? r.起 + ' 至 ' + r.止 : (r.起 || r.止 || '');
         add(c, r.起, '报名开始 · ' + c.名,
           '报名窗口：' + span + '；来源：' + (r.来源 || '官方') + (r.备注 ? '；' + r.备注 : '') +
-          '；官网：' + site + '；数据截至 ' + upd);
+          '；官网：' + site + '；更新于 ' + upd);
         add(c, r.止, '报名截止 · ' + c.名,
           '报名窗口：' + span + '；来源：' + (r.来源 || '官方') +
-          '；官网：' + site + '；数据截至 ' + upd);
+          '；官网：' + site + '；更新于 ' + upd);
       });
     });
     return out;
@@ -1250,7 +1250,7 @@
       (c.适合 ? '<p class="card-for"><span class="k">适合</span>' + esc(c.适合) + '</p>' : '') +
       (c.说明 ? '<p class="note"><strong>小鱼：</strong>' + esc(String(c.说明).replace(/^小鱼：/, '')) + '</p>' : '') +
       '<div class="foot">' +
-        '<span class="upd">数据截至 ' + esc(c.数据截至 || META.更新时间 || '—') + '</span>' +
+        '<span class="upd">更新于 ' + esc(c.数据截至 || META.更新时间 || '—') + '</span>' +
         '<span class="sts">' + STATUS.map(function (s) {
           return '<button type="button" class="st ' + esc(s) + (st === s ? ' on' : '') + '" data-id="' + esc(c.id) +
             '" data-mk="' + esc(s) + '" aria-pressed="' + (st === s) + '">' + esc(mkLabel(c, s)) + '</button>';
@@ -1293,10 +1293,19 @@
     var warn = (age !== null && age > 200);
     document.getElementById('meta').innerHTML =
       '时间轴 ' + WINDOW[0] + ' → ' + WINDOW[MONTHS - 1] +
-      '　·　数据截至 ' + esc(upd) +
+      '　·　更新于 ' + esc(upd) +
       '　·　共 ' + ALL.length + ' 条　·　已标记 ' + Object.keys(marks).length + ' 项' +
       (warn ? '<br><span class="warn">数据已经 ' + age + ' 天没更新了，报名与考试时间以官网为准。</span>' : '');
-    document.getElementById('footSig').textContent = '大学生日历 · 数据截至 ' + upd + ' · v' + VERSION;
+    document.getElementById('footSig').textContent = '大学生日历 · 数据更新 ' + upd + ' · v' + VERSION;
+  /* 核对日期来自服务器 /calendar/meta.json，随每周自跑更新，不用人工改 */
+  fetch('https://api.zyx0407.com/calendar/meta.json', { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (m) {
+      if (!m || !m.checked_date) return;
+      var sig = document.getElementById('footSig');
+      if (sig) sig.textContent = sig.textContent + ' · 核对 ' + m.checked_date;
+    })
+    .catch(function () { });
     var cats = CATS.map(function (x) { return x.名; }).join(' / ');
     document.getElementById('footNote').innerHTML =
       '报名与考试时间可能调整，以各证的官方网站为准' +

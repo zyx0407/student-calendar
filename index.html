@@ -37,6 +37,7 @@
       <a class="home" href="https://zyx0407.com" title="回阿玖主页"><b>阿玖</b><span>zyx0407</span></a>
       <i class="sep">/</i>
       <span class="pagename">大学生日历</span>
+      <span class="views-note">该网页累计被访问 <b id="viewsCount">—</b> 次</span>
     </div>
     <div class="tools">
       <button type="button" id="icsBtn" class="ics-btn" title="把当前筛选结果导出为 .ics 日历文件（只含时间轴这 12 个月内、今天起的报名与考试），可导入手机日历">导出日历</button>
@@ -95,5 +96,34 @@
 
 <script src="数据.js"></script>
 <script src="app.js"></script>
+<script>
+/* 站点访问计数（2026-11-04）：报到我们的自建接口并显示累计次数，失败静默 */
+(function () {
+  var API = 'https://api.zyx0407.com/views?slug=work1';
+  var el = document.getElementById('viewsCount');
+  function show(n) {
+    document.documentElement.dataset.views = String(n);
+    if (el && typeof n === 'number') el.textContent = n.toLocaleString('zh-CN');
+  }
+  fetch(API, { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) { show(j && j.n); })
+    .catch(function (e) { document.documentElement.dataset.viewsErr = String(e).slice(0, 120); });
+  try {
+    var k = 'viewed:work1';
+    if (sessionStorage.getItem(k)) return;
+    sessionStorage.setItem(k, '1');
+  } catch (e) { }
+  try {
+    fetch('https://api.zyx0407.com/views', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: 'work1' })
+    }).then(function (r) { return r.json(); })
+      .then(function (j) { show(j && j.n); })
+      .catch(function () { });
+  } catch (e) { }
+})();
+</script>
 </body>
 </html>
