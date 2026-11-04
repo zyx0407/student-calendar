@@ -71,6 +71,8 @@ Same system as the main site: warm paper by day, dark gallery by night; follows 
 
 ## Changelog
 
+- **v1.3.1 (2026-11-04)** — teacher-certification interview registration moved to Nov 6 (official); footer date and the header visit count are now automatic; date wording unified to "updated on"; asset URLs carry a version string so browsers stop serving a cached `app.js`.
+- **v1.3 (2026-10-20)** — each month gained a "this month's exams" row (test dates listed by exam month, click to jump to the card); fixed exam-row overflow at 320px.
 - **v1.2 (2026-10-19)** — fixed month-cell jumps (4 of 12 cells did nothing, the rest landed under the sticky bar); fixed three sticky-bar bugs (the page jumped up 128px when the bar pinned, it pinned 115px too early, and it never pinned again after unpinning once); the "official site" line on each card is now a real link (was plain text on all 22 cards) and the duplicate footer link is gone; `.ics` export is limited to the 12-month axis window (it used to dump dates through 2029 — 60 of 123 events were outside the window) and the button shows the event count; palette hierarchy tuned (page/card contrast, heavier dates, fee and side note pushed back, countdown as an amber badge).
 - **v1.1 (2026-10-17)** — full mobile reflow (header / hero / filters / sticky timeline / groups / cards / share sheet); share card and saved image redesigned (serif title, paper layout, ellipsis for long text, no mobile overflow); "Export calendar" `.ics`; the "阿玖 zyx0407" header now links back to the main site; version shown in the footer.
 - **v1.0 (2026-09-27)** — first release: 22 exams × a rolling 12-month timeline.
