@@ -52,6 +52,14 @@ Same system as the main site: warm paper by day, dark gallery by night; follows 
 | `?card=<id>` | Scroll to that card and highlight it (what the QR code contains) |
 | `?still=1` | Disable transitions and animations |
 
+## Architecture
+
+![architecture](架构图.png)
+
+- Pure static single page: `数据.js` holds data only, `app.js` only renders — editing data is editing the page
+- 22 certificates on a rolling 12-month axis; the QR encoder is hand-written inside `app.js`, zero dependencies
+- The public repo holds 10 files (this diagram is the 10th); `test\`, `_shots\`, `_publish\` are never pushed
+
 ## Files
 
 | File | What it is |
