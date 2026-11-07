@@ -366,6 +366,10 @@ footer{
 footer .sig{font-family:var(--mono);letter-spacing:.08em}
 footer a{border-bottom:1px solid var(--line-strong)}
 footer a:hover{color:var(--amber)}
+/* 备案号（2026-11-07 加，与门面站同号） */
+footer .beian{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.04em}
+footer .beian a{text-decoration:none}
+footer .beian .sep{opacity:.5}
 
 /* ── 小提示条（点月份格但那个月没安排时，给一句实话） ── */
 .toast{
